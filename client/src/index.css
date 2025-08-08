@@ -1,0 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* basic smooth scrolling */
+html,
+body {
+  height: 100%;
+}

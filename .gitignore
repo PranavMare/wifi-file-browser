@@ -1,0 +1,30 @@
+# Node
+**/node_modules/
+**/.cache/
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+*.tsbuildinfo
+
+# Build outputs
+**/dist/
+**/build/
+
+# Env 
+.env
+.env.*
+.cache
+!**/.env.example
+client/.env
+backend/.env
+.cache/
+
+# Logs
+**/logs/
+*.log
+
+# OS/Editor junk
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
