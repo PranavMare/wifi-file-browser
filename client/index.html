@@ -1,6 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
+    <script>
+  // Default to dark unless user explicitly saved "light"
+  (() => {
+    const saved = localStorage.getItem("theme");
+    const isDark = saved ? saved === "dark" : true;
+    document.documentElement.classList.toggle("dark", isDark);
+  })();
+</script>
+
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
     <title>WF Browser</title>

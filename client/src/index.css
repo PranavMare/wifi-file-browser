@@ -2,8 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
-/* basic smooth scrolling */
-html,
-body {
-  height: 100%;
+/* Page background/text for both modes */
+@layer base {
+  html:not(.dark) body {
+    @apply bg-white text-neutral-900;
+  }
+  html.dark body {
+    @apply bg-brand text-white;
+  }
 }

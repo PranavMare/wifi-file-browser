@@ -1,5 +1,5 @@
 // server.js (ES modules) — serves ./dist
-import "dotenv/config"; // ⬅️ loads .env
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import fs from "fs";
@@ -306,7 +306,7 @@ app.get(/^\/thumb\/(.+)$/, async (req, res) => {
 
     const w = Math.max(1, Math.min(4096, parseInt(req.query.w ?? "360", 10)));
     const h = req.query.h ? Math.max(1, Math.min(4096, parseInt(req.query.h, 10))) : null;
-    const fit = (req.query.fit || "cover").toString();
+    const fit = (req.query.fit || "contain").toString();
     const fm = (req.query.fm || "webp").toString().toLowerCase(); // webp | jpeg | avif
     const q = Math.max(1, Math.min(100, parseInt(req.query.q ?? "82", 10)));
 
@@ -331,10 +331,13 @@ app.get(/^\/thumb\/(.+)$/, async (req, res) => {
             withoutEnlargement: true,
             kernel: sharp.kernel.lanczos3,
             fastShrinkOnLoad: true,
+            background: { r: 0, g: 0, b: 0, alpha: 0 }, // transparent when format supports it
           });
 
-        if (fm === "webp") pipe = pipe.webp({ quality: q, effort: 4 });
-        else if (fm === "avif") pipe = pipe.avif({ quality: q, effort: 4 });
+        if (fm === "jpeg" && h) {
+          // JPEG has no alpha — flatten onto white so pads aren't black
+          pipe = pipe.flatten({ background: "#ffffff" });
+        } else if (fm === "avif") pipe = pipe.avif({ quality: q, effort: 4 });
         else pipe = pipe.jpeg({ quality: q, progressive: true, mozjpeg: true });
 
         await pipe.toFile(outPath);
@@ -368,7 +371,7 @@ app.get(/^\/vthumb\/(.+)$/, async (req, res) => {
 
     const w = Math.max(1, Math.min(4096, parseInt(req.query.w ?? "360", 10)));
     const h = req.query.h ? Math.max(1, Math.min(4096, parseInt(req.query.h, 10))) : null;
-    const fit = String(req.query.fit ?? "cover").toLowerCase();
+    const fit = String(req.query.fit ?? "contain").toLowerCase();
     const fm = String(req.query.fm ?? "jpeg").toLowerCase(); // "jpeg" | "webp"
     const q = Math.max(1, Math.min(100, parseInt(req.query.q ?? "85", 10)));
     const t = Math.max(0, parseFloat(req.query.t ?? "1.0")); // seek time in seconds
@@ -386,7 +389,7 @@ app.get(/^\/vthumb\/(.+)$/, async (req, res) => {
       let vf = "";
       if (w && h) {
         if (fit === "contain") {
-          vf = `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`;
+          vf = `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:white`;
         } else {
           vf = `scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h}`;
         }

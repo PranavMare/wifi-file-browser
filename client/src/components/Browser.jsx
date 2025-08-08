@@ -192,14 +192,14 @@ export default function Browser() {
   }, [rel]);
 
   return (
-    <div className="p-4 font-sans">
+    <div className="min-h-screen p-4 font-sans bg-white text-neutral-900 dark:bg-[#232939ff] dark:text-white">
       {/* Breadcrumbs */}
       <nav aria-label="Breadcrumb" className="mb-2 text-sm">
         {crumbs.map((c, i) => (
           <span key={c.href}>
             {i ? " / " : ""}
             {i < crumbs.length - 1 ? (
-              <Link className="text-blue-600 hover:underline" to={c.href}>
+              <Link className="text-blue-600 hover:underline dark:text-blue-300" to={c.href}>
                 {c.name}
               </Link>
             ) : (
@@ -210,70 +210,88 @@ export default function Browser() {
       </nav>
 
       {/* Toolbar */}
-      <div className="-mx-3 mb-3 sticky top-0 z-10 bg-white/95 backdrop-blur px-3 py-2 border-b border-neutral-200 flex flex-wrap items-center gap-3">
-        {rel ? (
-          <Link to={toFolderRoute(parentRel, "")} className="text-blue-600 hover:underline">
-            &larr; Up
-          </Link>
-        ) : (
-          <span className="text-neutral-400">&larr; Up</span>
-        )}
-
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-neutral-700">Filter:</span>
-          {["images", "videos", "others"].map((key) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setFilter(key)}
-              aria-pressed={filter === key}
-              className={["border rounded-full px-3 py-1.5 text-sm", filter === key ? "font-semibold border-neutral-800" : "border-neutral-300"].join(" ")}
-            >
-              {key[0].toUpperCase() + key.slice(1)}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex items-center gap-2">
-          <input
-            className="border border-neutral-300 rounded-lg px-3 py-1.5 text-sm min-w-[12rem] outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="Search files…"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            aria-label="Search files by name"
-          />
-          {q && (
-            <button onClick={() => setQ("")} aria-label="Clear search" className="border border-neutral-300 rounded-full px-2.5 py-1.5 text-sm">
-              ×
-            </button>
+      <div className="-mx-3 mb-3 sticky top-0 z-10 px-3 py-2 border-b bg-white/80 border-neutral-200 backdrop-blur dark:bg-white/10 dark:border-white/15">
+        <div className="flex flex-wrap items-center gap-3">
+          {rel ? (
+            <Link to={toFolderRoute(parentRel, "")} className="text-blue-600 hover:underline dark:text-blue-300">
+              &larr; Up
+            </Link>
+          ) : (
+            <span className="text-neutral-400 dark:text-white/60">&larr; Up</span>
           )}
+
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-neutral-700 dark:text-white/80">Filter:</span>
+            {["images", "videos", "others"].map((key) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setFilter(key)}
+                aria-pressed={filter === key}
+                className={`rounded-full px-3 py-1.5 text-sm border transition
+                ${filter === key ? "font-semibold border-neutral-800 dark:border-white" : "border-neutral-300 dark:border-white/20"}`}
+              >
+                {key[0].toUpperCase() + key.slice(1)}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              className="border border-neutral-300 rounded-lg px-3 py-1.5 text-sm min-w-[12rem] outline-none
+                         focus:ring-2 focus:ring-blue-500
+                         dark:bg-white/10 dark:text-white dark:border-white/20
+                         placeholder:text-neutral-400 dark:placeholder:text-white/60"
+              placeholder="Search files…"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              aria-label="Search files by name"
+            />
+            {q && (
+              <button
+                onClick={() => setQ("")}
+                aria-label="Clear search"
+                className="border border-neutral-300 rounded-full px-2.5 py-1.5 text-sm dark:border-white/25"
+              >f
+                ×
+              </button>
+            )}
+          </div>
+
+          <div className="flex-1" />
+
+          <label className="text-sm flex items-center gap-1">
+            <span className="dark:text-white/80">View:</span>
+            <select
+              className="border border-neutral-300 rounded-md px-2 py-1 text-sm dark:bg-white/10 dark:text-white dark:border-white/20"
+              value={density}
+              onChange={(e) => setDensity(e.target.value)}
+            >
+              <option value="compact">Compact</option>
+              <option value="comfortable">Comfortable</option>
+            </select>
+          </label>
+
+          <label className="text-sm flex items-center gap-1">
+            <span className="dark:text-white/80">Sort:</span>
+            <select
+              className="border border-neutral-300 rounded-md px-2 py-1 text-sm dark:bg-white/10 dark:text-white dark:border-white/20"
+              value={sortKey}
+              onChange={(e) => setSortKey(e.target.value)}
+            >
+              <option value="time-desc">Time ↓ (newest)</option>
+              <option value="time-asc">Time ↑ (oldest)</option>
+              <option value="size-asc">Size ↑ (smallest)</option>
+              <option value="size-desc">Size ↓ (largest)</option>
+            </select>
+          </label>
         </div>
-
-        <div className="flex-1" />
-
-        <label className="text-sm flex items-center gap-1">
-          <span>View:</span>
-          <select className="border border-neutral-300 rounded-md px-2 py-1 text-sm" value={density} onChange={(e) => setDensity(e.target.value)}>
-            <option value="compact">Compact</option>
-            <option value="comfortable">Comfortable</option>
-          </select>
-        </label>
-
-        <label className="text-sm flex items-center gap-1">
-          <span>Sort:</span>
-          <select className="border border-neutral-300 rounded-md px-2 py-1 text-sm" value={sortKey} onChange={(e) => setSortKey(e.target.value)}>
-            <option value="time-desc">Time ↓ (newest)</option>
-            <option value="time-asc">Time ↑ (oldest)</option>
-            <option value="size-asc">Size ↑ (smallest)</option>
-            <option value="size-desc">Size ↓ (largest)</option>
-          </select>
-        </label>
       </div>
 
-      {loading && <div className="py-5 text-neutral-600">Loading…</div>}
-      {err && !loading && <div className="py-5 text-red-600">Error: {err}</div>}
+      {loading && <div className="py-5 text-neutral-600 dark:text-white/80">Loading…</div>}
+      {err && !loading && <div className="py-5 text-red-600 dark:text-red-300">Error: {err}</div>}
       {!loading && !err && filteredSorted.length === 0 && (
-        <div className="py-6 text-neutral-600">
+        <div className="py-6 text-neutral-600 dark:text-white/70">
           No items match <strong>{q ? `"${q}"` : "your filter"}</strong>.
         </div>
       )}
@@ -288,10 +306,8 @@ export default function Browser() {
       <div ref={sentinelRef} className="h-px" />
 
       {pageItems.length < filteredSorted.length && (
-        <div className="flex items-center justify-center gap-3 mt-4 text-neutral-700">
-          <button className="border rounded-md px-3 py-1.5" onClick={() => setPage((p) => p + 1)}>
-            Load more
-          </button>
+        <div className="flex items-center justify-center gap-3 mt-4 text-neutral-700 dark:text-white/80">
+          <button className="border rounded-md px-3 py-1.5 border-neutral-300 dark:border-white/25">Load more</button>
           <span>
             Showing {pageItems.length} of {filteredSorted.length}
           </span>
@@ -338,10 +354,39 @@ function Card({ rel, entry: e, onOpenImage, onOpenVideo, cardHeight = 220, densi
     const ext = (m ? m[0].slice(1) : "").toLowerCase();
     return ["jpg", "jpeg", "png", "webp", "gif", "bmp", "svg"].includes(ext);
   }, [e.category, e.name]);
+
   const isVideo = useCallback(() => {
     if (e.category === "video") return true;
     return /\.(mp4|m4v|mov|webm|mkv|avi)$/i.test(e.name || "");
   }, [e.category, e.name]);
+
+  // ---------- Shared: measure the card box ----------
+  const cardRef = useRef(null);
+  const [box, setBox] = useState({ w: 0, h: 0, dpr: 1, isMobile: false });
+
+  useEffect(() => {
+    const updateMQ = () => setBox((b) => ({ ...b, isMobile: window.matchMedia("(max-width: 640px)").matches }));
+    updateMQ();
+    window.addEventListener("resize", updateMQ);
+
+    const ro = new ResizeObserver(([entry]) => {
+      if (!entry) return;
+      const { width, height } = entry.contentRect;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2); // cap to keep files small
+      setBox((prev) => ({
+        ...prev,
+        w: Math.max(1, Math.round(width * dpr)),
+        h: Math.max(1, Math.round(height * dpr)),
+        dpr,
+      }));
+    });
+    if (cardRef.current) ro.observe(cardRef.current);
+
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", updateMQ);
+    };
+  }, []);
 
   // Folder card
   if (e.is_dir) {
@@ -350,9 +395,10 @@ function Card({ rel, entry: e, onOpenImage, onOpenVideo, cardHeight = 220, densi
         to={hrefFolder}
         role="listitem"
         aria-label={`Open folder ${e.name}`}
-        className="relative overflow-hidden rounded-xl border border-neutral-200 bg-white h-56 flex items-stretch justify-center"
+        className="relative overflow-hidden rounded-xl border h-56 flex items-stretch justify-center
+                   bg-white border-neutral-200 dark:bg-white/5 dark:border-white/15"
       >
-        <div className="w-full h-full flex items-center justify-center text-[54px] text-amber-600 bg-neutral-100">📁</div>
+        <div className="w-full h-full flex items-center justify-center text-[54px] text-amber-600 bg-neutral-100 dark:bg-black/30">📁</div>
         <div className="absolute inset-x-0 bottom-0 p-2 text-white flex items-center gap-2 bg-gradient-to-t from-black/70 via-black/60 to-transparent">
           <div className="font-semibold text-xs truncate flex-1" title={e.name}>
             {e.name}/
@@ -362,23 +408,30 @@ function Card({ rel, entry: e, onOpenImage, onOpenVideo, cardHeight = 220, densi
     );
   }
 
-  const canFullscreen = isImage();
   const fileHref = e.file;
 
-  // Images → responsive thumbnails
-  if (canFullscreen) {
+  // ---------- Images ----------
+  if (isImage()) {
     const thumbBase = (e.thumb || "").split("?")[0] || (fileHref ? fileHref.replace(/^\/file\//, "/thumb/") : "");
-    const widths = [240, 360, 480, 720];
-    const sizes = "(max-width: 640px) 44vw, (max-width: 1024px) 22vw, 200px";
-    const ghostBtn = "text-white/95 bg-white/20 border border-white/30 rounded-md px-2.5 py-1 text-xs backdrop-blur hover:bg-white/25";
-    const kebabBtn = `${ghostBtn} px-2 py-1 text-sm`;
+
+    // Build exact-size URL from measured box
+    const fit = box.isMobile ? "contain" : "cover";
+    const cssW = box.w ? Math.round(box.w / box.dpr) : undefined;
+    const cssH = box.h ? Math.round(box.h / box.dpr) : undefined;
+
+    const imgUrl =
+      box.w && box.h
+        ? `${thumbBase}?w=${box.w}&h=${box.h}&fit=${fit}&fm=webp&q=${box.isMobile ? 88 : 82}`
+        : `${thumbBase}?w=360&h=${cardHeight}&fit=contain&fm=webp&q=88`; // initial placeholder
 
     return (
       <div
+        ref={cardRef}
         role="listitem"
-        className={`relative overflow-hidden rounded-xl border border-neutral-200 bg-white ${
-          density === "compact" ? "h-40" : "h-56"
-        } flex items-stretch justify-center touch-manipulation`}
+        className={`relative overflow-hidden rounded-xl border
+                    ${density === "compact" ? "h-40" : "h-56"}
+                    bg-white border-neutral-200 dark:bg-white/5 dark:border-white/15
+                    flex items-stretch justify-center touch-manipulation`}
         onClick={() => onOpenImage?.(fileHref)}
         onTouchStart={startPress}
         onTouchEnd={endPress}
@@ -392,45 +445,47 @@ function Card({ rel, entry: e, onOpenImage, onOpenVideo, cardHeight = 220, densi
           }
         }}
       >
-        <picture
-          onClick={(ev) => {
-            ev.stopPropagation();
-            onOpenImage?.(fileHref);
+        <img
+          loading="lazy"
+          decoding="async"
+          src={imgUrl}
+          alt={e.name || ""}
+          width={cssW}
+          height={cssH}
+          className={`w-full h-full ${box.isMobile ? "object-contain" : "object-cover"} bg-neutral-100 dark:bg-black/30 cursor-zoom-in select-none`}
+          draggable={false}
+          onError={(ev) => {
+            ev.currentTarget.src = fileHref;
           }}
-          className="w-full h-full"
-        >
-          <source type="image/avif" srcSet={widths.map((w) => `${thumbBase}?w=${w}&h=${cardHeight}&fit=cover&fm=avif&q=60 ${w}w`).join(", ")} sizes={sizes} />
-          <source type="image/webp" srcSet={widths.map((w) => `${thumbBase}?w=${w}&h=${cardHeight}&fit=cover&fm=webp&q=82 ${w}w`).join(", ")} sizes={sizes} />
-          <img
-            loading="lazy"
-            decoding="async"
-            src={`${thumbBase}?w=360&h=${cardHeight}&fit=cover&fm=jpeg&q=85`}
-            alt={e.name || ""}
-            className="w-full h-full object-cover bg-neutral-100 cursor-zoom-in select-none"
-            draggable={false}
-            onError={(ev) => {
-              ev.currentTarget.src = fileHref;
-            }}
-          />
-        </picture>
+        />
 
         <FooterOverlay name={e.name} fileHref={fileHref} downloadHref={e.download} menuOpen={menuOpen} setMenuOpen={setMenuOpen} />
       </div>
     );
   }
 
-  // Videos → play in lightbox
+  // ---------- Videos ----------
   if (isVideo()) {
-    const fileHref = e.file;
-    const vthumbBase = fileHref.replace(/^\/file\//, "/vthumb/"); // same relative path
-    const widths = [240, 360, 480, 720];
-    const sizes = "(max-width: 640px) 44vw, (max-width: 1024px) 22vw, 200px";
+    const vthumbBase = fileHref.replace(/^\/file\//, "/vthumb/");
+    const fit = box.isMobile ? "contain" : "cover";
+
+    // FFmpeg prefers even dimensions
+    const W = box.w ? (box.w % 2 ? box.w - 1 : box.w) : 0;
+    const H = box.h ? (box.h % 2 ? box.h - 1 : box.h) : 0;
+
+    const posterUrl =
+      W && H
+        ? `${vthumbBase}?w=${W}&h=${H}&fit=${fit}&fm=webp&q=${box.isMobile ? 88 : 82}&t=1`
+        : `${vthumbBase}?w=360&h=${density === "compact" ? 160 : 220}&fit=contain&fm=webp&q=88&t=1`;
+
     const ghostBtn = "text-white/95 bg-white/20 border border-white/30 rounded-md px-2.5 py-1 text-xs backdrop-blur hover:bg-white/25";
 
     return (
       <div
+        ref={cardRef}
         role="listitem"
-        className={`relative overflow-hidden rounded-xl border border-neutral-200 bg-black ${density === "compact" ? "h-40" : "h-56"}`}
+        className={`relative overflow-hidden rounded-xl border ${density === "compact" ? "h-40" : "h-56"}
+                    bg-black border-neutral-200 dark:border-white/15`}
         onClick={() => onOpenVideo?.(fileHref)}
         onTouchStart={startPress}
         onTouchEnd={endPress}
@@ -444,29 +499,24 @@ function Card({ rel, entry: e, onOpenImage, onOpenVideo, cardHeight = 220, densi
           }
         }}
       >
-        {/* Poster */}
-        <picture onClick={(ev) => ev.stopPropagation()} className="w-full h-full block">
-          <source
-            type="image/webp"
-            srcSet={widths.map((w) => `${vthumbBase}?w=${w}&h=${density === "compact" ? 160 : 220}&fit=cover&fm=webp&q=82 ${w}w`).join(", ")}
-            sizes={sizes}
-          />
-          <img
-            loading="lazy"
-            decoding="async"
-            src={`${vthumbBase}?w=360&h=${density === "compact" ? 160 : 220}&fit=cover&fm=jpeg&q=85`}
-            alt={e.name || ""}
-            className="w-full h-full object-cover bg-neutral-900"
-            onError={(ev) => {
-              ev.currentTarget.style.display = "none";
-            }}
-          />
-        </picture>
+        <img
+          loading="lazy"
+          decoding="async"
+          src={posterUrl}
+          alt={e.name || ""}
+          width={box.w ? Math.round(box.w / box.dpr) : undefined}
+          height={box.h ? Math.round(box.h / box.dpr) : undefined}
+          className={`w-full h-full ${box.isMobile ? "object-contain" : "object-cover"} bg-neutral-900`}
+          onClick={(ev) => ev.stopPropagation()}
+          onError={(ev) => {
+            ev.currentTarget.style.display = "none";
+          }}
+        />
 
         {/* Play overlay */}
         <div className="absolute inset-0 grid place-items-center pointer-events-none">
-          <div className="w-14 h-14 rounded-full bg-white/20 backdrop-blur border border-white/30 grid place-items-center">
-            <svg width="30" height="30" viewBox="0 0 24 24" fill="white">
+          <div className="w-10 h-10 rounded-full bg-white/20 backdrop-blur border border-white/30 grid place-items-center">
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="white" aria-hidden="true">
               <path d="M8 5v14l11-7z" />
             </svg>
           </div>
@@ -495,16 +545,17 @@ function Card({ rel, entry: e, onOpenImage, onOpenVideo, cardHeight = 220, densi
   return (
     <div
       role="listitem"
-      className={`relative overflow-hidden rounded-xl border border-neutral-200 bg-white ${
-        density === "compact" ? "h-40" : "h-56"
-      } flex items-stretch justify-center`}
+      className={`relative overflow-hidden rounded-xl border
+                  ${density === "compact" ? "h-40" : "h-56"}
+                  bg-white border-neutral-200 dark:bg-white/5 dark:border-white/15
+                  flex items-stretch justify-center`}
       tabIndex={-1}
       aria-label={e.name}
       onTouchStart={startPress}
       onTouchEnd={endPress}
       onTouchCancel={endPress}
     >
-      <div className="w-full h-full flex items-center justify-center text-4xl bg-neutral-100" aria-label={e.category} title={e.category}>
+      <div className="w-full h-full flex items-center justify-center text-4xl bg-neutral-100 dark:bg-black/30" aria-label={e.category} title={e.category}>
         {iconFor(e.category)}
       </div>
       <div className="absolute inset-x-0 bottom-0 p-2 text-white flex items-center gap-2 bg-gradient-to-t from-black/70 via-black/60 to-transparent">
