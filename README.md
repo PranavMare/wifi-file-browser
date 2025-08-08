@@ -1,6 +1,15 @@
-# WiFi Files (React + Node)
+# wifi-file-browser
 
-A fast, mobile-friendly file browser you open from your phone over local Wi-Fi. Browse folders, view images (fullscreen with gestures), stream videos (HTTP Range), download, search, and filter—served by a single Node/Express server.
+> Browse your PC’s files from your phone over Wi-Fi. Images (fullscreen + gestures), video streaming, quick downloads — built with React + Node/Express.
+
+<p align="left">
+  <a href="https://nodejs.org/"><img alt="Node >=20" src="https://img.shields.io/badge/node-%E2%89%A520-339933?logo=node.js&logoColor=white"></a>
+  <a href="https://react.dev/"><img alt="React 18" src="https://img.shields.io/badge/react-18-61DAFB?logo=react&logoColor=white"></a>
+  <a href="https://vitejs.dev/"><img alt="Vite" src="https://img.shields.io/badge/vite-5-646CFF?logo=vite&logoColor=white"></a>
+  <a href="https://expressjs.com/"><img alt="Express" src="https://img.shields.io/badge/express-5-000000?logo=express&logoColor=white"></a>
+  <img alt="License" src="https://img.shields.io/badge/license-MIT-blue.svg">
+  <img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg">
+</p>
 
 ---
 
@@ -30,9 +39,9 @@ node server.js
 Create a `.env` or set in your shell:
 
 ```bash
-AUTH_PASS=8080                 # login password
+AUTH_PASS=0000                 # login password
 COOKIE_SECRET=please-change-me # cookie signing secret
-BASE_DIR=C:\Users\Pranav\Downloads  # folder to share
+BASE_DIR="/add-the-folder-to-be-shared"  # folder to share
 PORT=3000
 ```
 
