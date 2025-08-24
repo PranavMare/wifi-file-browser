@@ -1,24 +1,16 @@
 {
-  "name": "wifi-files",
-  "version": "1.0.0",
-  "private": true,
   "type": "module",
-  "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "dev": "node server/index.js",
+    "start": "node server/index.js"
   },
   "dependencies": {
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
-    "dotenv": "^17.2.1",
-    "express": "^5.1.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
     "ffmpeg-static": "^5.2.0",
-    "mime-types": "^3.0.1",
-    "sharp": "^0.34.3"
-  },
-  "devDependencies": {
-    "autoprefixer": "^10.4.21",
-    "postcss": "^8.5.6",
-    "tailwindcss": "^3.4.17"
+    "mime-types": "^2.1.35",
+    "sharp": "^0.33.4"
   }
 }

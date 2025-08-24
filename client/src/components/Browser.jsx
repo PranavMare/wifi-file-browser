@@ -41,7 +41,6 @@ export default function Browser() {
 
   const [filter, setFilter] = useState("images");
   const [sortKey, setSortKey] = useState("time-desc");
-  const [density, setDensity] = useState("comfortable");
   const [q, setQ] = useState("");
 
   // load & persist prefs
@@ -50,13 +49,13 @@ export default function Browser() {
       const saved = JSON.parse(localStorage.getItem("browser_prefs") || "{}");
       if (saved.filter) setFilter(saved.filter);
       if (saved.sortKey) setSortKey(saved.sortKey);
-      if (saved.density) setDensity(saved.density);
+
       if (saved.q) setQ(saved.q);
     } catch {}
   }, []);
   useEffect(() => {
-    localStorage.setItem("browser_prefs", JSON.stringify({ filter, sortKey, density, q }));
-  }, [filter, sortKey, density, q]);
+    localStorage.setItem("browser_prefs", JSON.stringify({ filter, sortKey, q }));
+  }, [filter, sortKey, q]);
 
   // fetch current folder
   useEffect(() => {
@@ -177,8 +176,6 @@ export default function Browser() {
     [videos.length]
   );
 
-  const cardHeight = density === "compact" ? 160 : 220;
-
   // breadcrumbs
   const crumbs = useMemo(() => {
     const segs = rel.split("/").filter(Boolean);
@@ -219,7 +216,6 @@ export default function Browser() {
           ) : (
             <span className="text-neutral-400 dark:text-white/60">&larr; Up</span>
           )}
-
           <div className="flex items-center gap-2">
             <span className="text-sm text-neutral-700 dark:text-white/80">Filter:</span>
             {["images", "videos", "others"].map((key) => (
@@ -235,7 +231,6 @@ export default function Browser() {
               </button>
             ))}
           </div>
-
           <div className="flex items-center gap-2">
             <input
               className="border border-neutral-300 rounded-lg px-3 py-1.5 text-sm min-w-[12rem] outline-none
@@ -252,54 +247,45 @@ export default function Browser() {
                 onClick={() => setQ("")}
                 aria-label="Clear search"
                 className="border border-neutral-300 rounded-full px-2.5 py-1.5 text-sm dark:border-white/25"
-              >f
+              >
                 ×
               </button>
             )}
           </div>
-
           <div className="flex-1" />
-
-          <label className="text-sm flex items-center gap-1">
-            <span className="dark:text-white/80">View:</span>
-            <select
-              className="border border-neutral-300 rounded-md px-2 py-1 text-sm dark:bg-white/10 dark:text-white dark:border-white/20"
-              value={density}
-              onChange={(e) => setDensity(e.target.value)}
-            >
-              <option value="compact">Compact</option>
-              <option value="comfortable">Comfortable</option>
-            </select>
-          </label>
-
-          <label className="text-sm flex items-center gap-1">
-            <span className="dark:text-white/80">Sort:</span>
-            <select
-              className="border border-neutral-300 rounded-md px-2 py-1 text-sm dark:bg-white/10 dark:text-white dark:border-white/20"
-              value={sortKey}
-              onChange={(e) => setSortKey(e.target.value)}
-            >
-              <option value="time-desc">Time ↓ (newest)</option>
-              <option value="time-asc">Time ↑ (oldest)</option>
-              <option value="size-asc">Size ↑ (smallest)</option>
-              <option value="size-desc">Size ↓ (largest)</option>
-            </select>
-          </label>
+          <label className="text-sm flex items-center gap-1"></label>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-neutral-700 dark:text-white/80">Sort:</span>
+            {[
+              ["time-desc", "Newest"],
+              ["time-asc", "Oldest"],
+              ["size-desc", "Largest"],
+              ["size-asc", "Smallest"],
+            ].map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setSortKey(key)}
+                aria-pressed={sortKey === key}
+                className={`rounded-full px-3 py-1.5 text-sm border transition ${
+                  sortKey === key ? "font-semibold border-neutral-600 dark:border-white" : "border-neutral-300 dark:border-white/20"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
       {loading && <div className="py-5 text-neutral-600 dark:text-white/80">Loading…</div>}
       {err && !loading && <div className="py-5 text-red-600 dark:text-red-300">Error: {err}</div>}
-      {!loading && !err && filteredSorted.length === 0 && (
-        <div className="py-6 text-neutral-600 dark:text-white/70">
-          No items match <strong>{q ? `"${q}"` : "your filter"}</strong>.
-        </div>
-      )}
+      {!loading && !err && filteredSorted.length === 0 && <div className="py-6 text-neutral-600 dark:text:white/70"></div>}
 
-      {/* GRID: phones = 2 cols */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3" role="list">
+      {/* GRID: phones = 3 cols */}
+      <div className={`grid grid-cols-4 sm:grid-cols-4 md:grid-cols-6 gap-1`} role="list">
         {pageItems.map((e, i) => (
-          <Card key={e.name + ":" + i} rel={rel} entry={e} onOpenImage={openViewer} onOpenVideo={openVideo} cardHeight={cardHeight} density={density} />
+          <Card key={e.name + ":" + i} rel={rel} entry={e} onOpenImage={openViewer} onOpenVideo={openVideo} />
         ))}
       </div>
 
@@ -307,7 +293,12 @@ export default function Browser() {
 
       {pageItems.length < filteredSorted.length && (
         <div className="flex items-center justify-center gap-3 mt-4 text-neutral-700 dark:text-white/80">
-          <button className="border rounded-md px-3 py-1.5 border-neutral-300 dark:border-white/25">Load more</button>
+          <button
+            className="border rounded-md px-3 py-1.5 border-neutral-300 dark:border-white/25"
+            onClick={() => setPage((p) => Math.min(p + 1, Math.ceil(filteredSorted.length / PAGE_SIZE)))}
+          >
+            Load more
+          </button>
           <span>
             Showing {pageItems.length} of {filteredSorted.length}
           </span>
@@ -335,73 +326,31 @@ export default function Browser() {
   );
 }
 
-function Card({ rel, entry: e, onOpenImage, onOpenVideo, cardHeight = 220, density = "comfortable" }) {
+function Card({ rel, entry: e, onOpenImage, onOpenVideo }) {
   const hrefFolder = toFolderRoute(rel, e.name);
 
-  // long-press menu
-  const [menuOpen, setMenuOpen] = useState(false);
-  const pressTimer = useRef(null);
-  const startPress = () => {
-    pressTimer.current = setTimeout(() => setMenuOpen(true), 450);
-  };
-  const endPress = () => {
-    clearTimeout(pressTimer.current);
-  };
-
-  const isImage = useCallback(() => {
+  const isImage = React.useCallback(() => {
     if (e.category === "image") return true;
     const m = /\.[^.]+$/.exec(e.name || "");
     const ext = (m ? m[0].slice(1) : "").toLowerCase();
-    return ["jpg", "jpeg", "png", "webp", "gif", "bmp", "svg"].includes(ext);
+    return ["jpg", "jpeg", "png", "webp", "gif", "bmp", "svg", "heic", "heif"].includes(ext);
   }, [e.category, e.name]);
 
-  const isVideo = useCallback(() => {
+  const isVideo = React.useCallback(() => {
     if (e.category === "video") return true;
     return /\.(mp4|m4v|mov|webm|mkv|avi)$/i.test(e.name || "");
   }, [e.category, e.name]);
 
-  // ---------- Shared: measure the card box ----------
-  const cardRef = useRef(null);
-  const [box, setBox] = useState({ w: 0, h: 0, dpr: 1, isMobile: false });
+  const baseTile = "relative aspect-square overflow-hidden rounded-md bg-neutral-100 dark:bg-[#102436] text-neutral-900 dark:text-white select-none";
 
-  useEffect(() => {
-    const updateMQ = () => setBox((b) => ({ ...b, isMobile: window.matchMedia("(max-width: 640px)").matches }));
-    updateMQ();
-    window.addEventListener("resize", updateMQ);
-
-    const ro = new ResizeObserver(([entry]) => {
-      if (!entry) return;
-      const { width, height } = entry.contentRect;
-      const dpr = Math.min(window.devicePixelRatio || 1, 2); // cap to keep files small
-      setBox((prev) => ({
-        ...prev,
-        w: Math.max(1, Math.round(width * dpr)),
-        h: Math.max(1, Math.round(height * dpr)),
-        dpr,
-      }));
-    });
-    if (cardRef.current) ro.observe(cardRef.current);
-
-    return () => {
-      ro.disconnect();
-      window.removeEventListener("resize", updateMQ);
-    };
-  }, []);
-
-  // Folder card
+  // ---------- FOLDER ----------
   if (e.is_dir) {
     return (
-      <Link
-        to={hrefFolder}
-        role="listitem"
-        aria-label={`Open folder ${e.name}`}
-        className="relative overflow-hidden rounded-xl border h-56 flex items-stretch justify-center
-                   bg-white border-neutral-200 dark:bg-white/5 dark:border-white/15"
-      >
-        <div className="w-full h-full flex items-center justify-center text-[54px] text-amber-600 bg-neutral-100 dark:bg-black/30">📁</div>
-        <div className="absolute inset-x-0 bottom-0 p-2 text-white flex items-center gap-2 bg-gradient-to-t from-black/70 via-black/60 to-transparent">
-          <div className="font-semibold text-xs truncate flex-1" title={e.name}>
-            {e.name}/
+      <Link to={hrefFolder} role="listitem" aria-label={`Open folder ${e.name}`} className={`${baseTile} flex items-center justify-center`}>
+        <div className="text-5xl sm:text-6xl text-amber-600 ">📁</div>
+        <div className="absolute inset-x-0 bottom-0 text-white text-xs sm:text-[13px] px-2 py-1 bg-black/55 backdrop-blur-sm">
+          <div className="truncate" title={e.name}>
+            {e.name}
           </div>
         </div>
       </Link>
@@ -410,88 +359,64 @@ function Card({ rel, entry: e, onOpenImage, onOpenVideo, cardHeight = 220, densi
 
   const fileHref = e.file;
 
-  // ---------- Images ----------
+  // helpers for responsive, square thumbnails
+  const imgWidths = [180, 240, 320, 480];
+  const sizes = "(max-width: 640px) 33vw, (max-width: 1024px) 20vw, 180px";
+
+  // ---------- IMAGE ----------
   if (isImage()) {
     const thumbBase = (e.thumb || "").split("?")[0] || (fileHref ? fileHref.replace(/^\/file\//, "/thumb/") : "");
 
-    // Build exact-size URL from measured box
-    const fit = box.isMobile ? "contain" : "cover";
-    const cssW = box.w ? Math.round(box.w / box.dpr) : undefined;
-    const cssH = box.h ? Math.round(box.h / box.dpr) : undefined;
-
-    const imgUrl =
-      box.w && box.h
-        ? `${thumbBase}?w=${box.w}&h=${box.h}&fit=${fit}&fm=webp&q=${box.isMobile ? 88 : 82}`
-        : `${thumbBase}?w=360&h=${cardHeight}&fit=contain&fm=webp&q=88`; // initial placeholder
-
     return (
-      <div
-        ref={cardRef}
-        role="listitem"
-        className={`relative overflow-hidden rounded-xl border
-                    ${density === "compact" ? "h-40" : "h-56"}
-                    bg-white border-neutral-200 dark:bg-white/5 dark:border-white/15
-                    flex items-stretch justify-center touch-manipulation`}
-        onClick={() => onOpenImage?.(fileHref)}
-        onTouchStart={startPress}
-        onTouchEnd={endPress}
-        onTouchCancel={endPress}
-        aria-label={`Open ${e.name} fullscreen`}
-        tabIndex={0}
-        onKeyDown={(ev) => {
-          if (ev.key === "Enter" || ev.key === " ") {
-            ev.preventDefault();
-            onOpenImage?.(fileHref);
-          }
-        }}
-      >
-        <img
-          loading="lazy"
-          decoding="async"
-          src={imgUrl}
-          alt={e.name || ""}
-          width={cssW}
-          height={cssH}
-          className={`w-full h-full ${box.isMobile ? "object-contain" : "object-cover"} bg-neutral-100 dark:bg-black/30 cursor-zoom-in select-none`}
-          draggable={false}
-          onError={(ev) => {
-            ev.currentTarget.src = fileHref;
-          }}
-        />
-
-        <FooterOverlay name={e.name} fileHref={fileHref} downloadHref={e.download} menuOpen={menuOpen} setMenuOpen={setMenuOpen} />
-      </div>
+      <button type="button" onClick={() => onOpenImage?.(fileHref)} aria-label={`Open ${e.name} fullscreen`} className={`${baseTile}`}>
+        <picture>
+          <source type="image/avif" srcSet={imgWidths.map((w) => `${thumbBase}?w=${w}&h=${w}&fit=cover&fm=avif&q=65 ${w}w`).join(", ")} sizes={sizes} />
+          <source type="image/webp" srcSet={imgWidths.map((w) => `${thumbBase}?w=${w}&h=${w}&fit=cover&fm=webp&q=82 ${w}w`).join(", ")} sizes={sizes} />
+          <img
+            loading="lazy"
+            decoding="async"
+            src={`${thumbBase}?w=240&h=240&fit=cover&fm=jpeg&q=85`}
+            alt=""
+            className="absolute inset-0 w-full h-full object-cover"
+            onError={(ev) => {
+              ev.currentTarget.src = fileHref;
+            }}
+          />
+        </picture>
+      </button>
     );
   }
 
-  // ---------- Videos ----------
+  // ---------- VIDEO ----------
   if (isVideo()) {
     const vthumbBase = fileHref.replace(/^\/file\//, "/vthumb/");
-    const fit = box.isMobile ? "contain" : "cover";
+    const vImgWidths = [180, 240, 320, 480];
+    const vSizes = "(max-width: 640px) 33vw, (max-width: 1024px) 20vw, 180px";
 
-    // FFmpeg prefers even dimensions
-    const W = box.w ? (box.w % 2 ? box.w - 1 : box.w) : 0;
-    const H = box.h ? (box.h % 2 ? box.h - 1 : box.h) : 0;
+    const [previewing, setPreviewing] = React.useState(false);
+    const videoRef = React.useRef(null);
 
-    const posterUrl =
-      W && H
-        ? `${vthumbBase}?w=${W}&h=${H}&fit=${fit}&fm=webp&q=${box.isMobile ? 88 : 82}&t=1`
-        : `${vthumbBase}?w=360&h=${density === "compact" ? 160 : 220}&fit=contain&fm=webp&q=88&t=1`;
-
-    const ghostBtn = "text-white/95 bg-white/20 border border-white/30 rounded-md px-2.5 py-1 text-xs backdrop-blur hover:bg-white/25";
+    const startInlinePlay = (ev) => {
+      ev.stopPropagation();
+      setPreviewing(true);
+      requestAnimationFrame(() => {
+        const v = videoRef.current;
+        if (v) {
+          try {
+            v.currentTime = 0;
+            v.play().catch(() => {});
+          } catch {}
+        }
+      });
+    };
 
     return (
       <div
-        ref={cardRef}
         role="listitem"
-        className={`relative overflow-hidden rounded-xl border ${density === "compact" ? "h-40" : "h-56"}
-                    bg-black border-neutral-200 dark:border-white/15`}
+        className="relative aspect-square overflow-hidden rounded-md bg-black select-none"
         onClick={() => onOpenVideo?.(fileHref)}
-        onTouchStart={startPress}
-        onTouchEnd={endPress}
-        onTouchCancel={endPress}
-        aria-label={`Play ${e.name}`}
         tabIndex={0}
+        aria-label={`Play ${e.name}`}
         onKeyDown={(ev) => {
           if (ev.key === "Enter" || ev.key === " ") {
             ev.preventDefault();
@@ -499,72 +424,60 @@ function Card({ rel, entry: e, onOpenImage, onOpenVideo, cardHeight = 220, densi
           }
         }}
       >
-        <img
-          loading="lazy"
-          decoding="async"
-          src={posterUrl}
-          alt={e.name || ""}
-          width={box.w ? Math.round(box.w / box.dpr) : undefined}
-          height={box.h ? Math.round(box.h / box.dpr) : undefined}
-          className={`w-full h-full ${box.isMobile ? "object-contain" : "object-cover"} bg-neutral-900`}
-          onClick={(ev) => ev.stopPropagation()}
-          onError={(ev) => {
-            ev.currentTarget.style.display = "none";
-          }}
-        />
+        {previewing ? (
+          <video
+            ref={videoRef}
+            src={fileHref}
+            className="absolute inset-0 w-full h-full object-cover"
+            autoPlay
+            muted
+            playsInline
+            onEnded={() => setPreviewing(false)}
+            onError={() => setPreviewing(false)}
+          />
+        ) : (
+          <picture className="absolute inset-0 w-full h-full block">
+            <source
+              type="image/webp"
+              srcSet={vImgWidths.map((w) => `${vthumbBase}?w=${w}&h=${w}&fit=cover&fm=webp&q=82&t=1 ${w}w`).join(", ")}
+              sizes={vSizes}
+            />
+            <img
+              loading="lazy"
+              decoding="async"
+              src={`${vthumbBase}?w=240&h=240&fit=cover&fm=jpeg&q=85&t=1`}
+              alt=""
+              className="absolute inset-0 w-full h-full object-cover"
+              onError={(ev) => {
+                ev.currentTarget.style.display = "none";
+              }}
+            />
+          </picture>
+        )}
 
-        {/* Play overlay */}
-        <div className="absolute inset-0 grid place-items-center pointer-events-none">
-          <div className="w-10 h-10 rounded-full bg-white/20 backdrop-blur border border-white/30 grid place-items-center">
-            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="white" aria-hidden="true">
+        {!previewing && (
+          <button
+            type="button"
+            onClick={startInlinePlay}
+            aria-label="Play"
+            className="absolute bottom-1 right-1 w-5 h-5 sm:w-6 sm:h-6 grid place-items-center
+                     rounded-full bg-white/25 border border-white/40 backdrop-blur
+                     hover:bg-white/30 active:scale-95 transition pointer-events-auto"
+          >
+            <svg viewBox="0 0 24 24" className="w-3 h-3 sm:w-3.5 sm:h-3.5" fill="white" aria-hidden="true">
               <path d="M8 5v14l11-7z" />
             </svg>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div
-          className="absolute inset-x-0 bottom-0 p-2 text-white flex items-center gap-2 bg-gradient-to-t from-black/70 via-black/60 to-transparent"
-          onClick={(e2) => e2.stopPropagation()}
-        >
-          <div className="font-semibold text-xs truncate flex-1" title={e.name}>
-            {e.name}
-          </div>
-          <button className={ghostBtn} onClick={() => onOpenVideo?.(fileHref)}>
-            Play
           </button>
-          <a className={ghostBtn} href={e.download}>
-            Download
-          </a>
-        </div>
+        )}
       </div>
     );
   }
 
-  // Other files
+  // ---------- OTHER ----------
   return (
-    <div
-      role="listitem"
-      className={`relative overflow-hidden rounded-xl border
-                  ${density === "compact" ? "h-40" : "h-56"}
-                  bg-white border-neutral-200 dark:bg-white/5 dark:border-white/15
-                  flex items-stretch justify-center`}
-      tabIndex={-1}
-      aria-label={e.name}
-      onTouchStart={startPress}
-      onTouchEnd={endPress}
-      onTouchCancel={endPress}
-    >
-      <div className="w-full h-full flex items-center justify-center text-4xl bg-neutral-100 dark:bg-black/30" aria-label={e.category} title={e.category}>
+    <div role="listitem" aria-label={e.name} className={`${baseTile} grid place-items-center`}>
+      <div className="text-3xl" aria-hidden="true">
         {iconFor(e.category)}
-      </div>
-      <div className="absolute inset-x-0 bottom-0 p-2 text-white flex items-center gap-2 bg-gradient-to-t from-black/70 via-black/60 to-transparent">
-        <div className="font-semibold text-xs truncate flex-1" title={e.name}>
-          {e.name}
-        </div>
-        <a className="text-white/95 bg-white/20 border border-white/30 rounded-md px-2.5 py-1 text-xs backdrop-blur hover:bg-white/25" href={e.download}>
-          Download
-        </a>
       </div>
     </div>
   );
@@ -601,14 +514,14 @@ function FooterOverlay({ name, fileHref, downloadHref, menuOpen, setMenuOpen }) 
           className="absolute right-2 bottom-12 min-w-[160px] flex flex-col rounded-xl overflow-hidden border border-white/20 bg-black/80 z-10"
           onClick={(e2) => e2.stopPropagation()}
         >
-          <button className="px-3 py-2 text-left text-sm text-white hover:bg-white/5 border-b border-white/10" onClick={() => window.open(fileHref, "_blank")}>
+          <button className="px-3 py-2 text-left text-sm text-white hover:bg:white/5 border-b border-white/10" onClick={() => window.open(fileHref, "_blank")}>
             Open
           </button>
-          <a className="px-3 py-2 text-left text-sm text-white hover:bg-white/5 border-b border-white/10" href={downloadHref}>
+          <a className="px-3 py-2 text-left text-sm text-white hover:bg:white/5 border-b border-white/10" href={downloadHref}>
             Download
           </a>
           <button
-            className="px-3 py-2 text-left text-sm text-white hover:bg-white/5"
+            className="px-3 py-2 text-left text-sm text-white hover:bg:white/5"
             onClick={async () => {
               const url = new URL(fileHref, location.origin).toString();
               try {
@@ -623,7 +536,7 @@ function FooterOverlay({ name, fileHref, downloadHref, menuOpen, setMenuOpen }) 
           >
             Share / Copy link
           </button>
-          <button className="px-3 py-2 text-left text-sm text-white hover:bg-white/5" onClick={() => setMenuOpen(false)}>
+          <button className="px-3 py-2 text-left text-sm text-white hover:bg:white/5" onClick={() => setMenuOpen(false)}>
             Close
           </button>
         </div>

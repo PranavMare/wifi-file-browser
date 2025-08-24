@@ -1,369 +1,286 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+// client/src/components/FullscreenViewer.jsx
+import React, { useEffect, useRef, useState } from "react";
 
 export default function FullscreenViewer({ open, items, index, setIndex, onClose }) {
-  const hasItems = Array.isArray(items) && items.length > 0;
-  const safeIndex = hasItems ? ((index % items.length) + items.length) % items.length : 0;
-  const item = hasItems ? items[safeIndex] : null;
+  const valid = Array.isArray(items) && items.length > 0;
+  const total = valid ? items.length : 0;
+  const safeIndex = valid ? ((index % total) + total) % total : 0;
+  const item = valid ? items[safeIndex] : null;
 
-  const containerRef = useRef(null);
+  const wrapRef = useRef(null);
   const imgRef = useRef(null);
 
-  const naturalRef = useRef({ w: 0, h: 0 });
-  const viewRef = useRef({ mode: "fit", zoom: 1, offsetX: 0, offsetY: 0, rotation: 0 });
-  const [ui, setUi] = useState({ mode: "fit", zoom: 1, rotation: 0, playing: false });
-  const pointersRef = useRef(new Map());
-  const pinchRef = useRef(null);
-  const dragRef = useRef(null);
-  const lastTapRef = useRef({ t: 0, x: 0, y: 0 });
-  const playingRef = useRef(false);
+  const natural = useRef({ w: 0, h: 0 });
+  const view = useRef({ base: 1, zoom: 1, x: 0, y: 0 });
 
-  const ZOOM_MIN = 0.1,
-    ZOOM_MAX = 8,
-    SLIDESHOW_MS = 2000;
+  const pointers = useRef(new Map()); // id -> {x,y,t}
+  const dragStart = useRef(null); // {x,y,vx,vy,t}
+  const pinchStart = useRef(null); // {dist, zoom}
+  const [loading, setLoading] = useState(true);
 
-  const forceUi = () => {
-    const v = viewRef.current;
-    setUi((u) => ({ ...u, mode: v.mode, zoom: v.zoom, rotation: v.rotation, playing: playingRef.current }));
-  };
+  const ZMAX = 6;
+  const SWIPE_PX = 70;
 
-  useEffect(() => {
-    if (!open) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, [open]);
+  // ---------- math + rendering ----------
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e) => {
-      if (e.key === "Escape") onClose?.();
-      else if (e.key === "ArrowRight") setIndex(safeIndex + 1);
-      else if (e.key === "ArrowLeft") setIndex(safeIndex - 1);
-      else if (e.key === "+" || e.key === "=") zoomBy(1.2);
-      else if (e.key === "-" || e.key === "_") zoomBy(1 / 1.2);
-      else if (e.key === "0") resetView();
-      else if (e.key.toLowerCase() === "r") rotateBy(90);
-      else if (e.key.toLowerCase() === "f") toggleFit();
-      else if (e.code === "Space") {
-        e.preventDefault();
-        togglePlay();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, safeIndex, setIndex, onClose]);
-
-  useEffect(() => {
-    if (!open) return;
-    playingRef.current = false;
-    let id;
-    const tick = () => {
-      if (playingRef.current && hasItems) setIndex(safeIndex + 1);
-      id = setTimeout(tick, SLIDESHOW_MS);
-    };
-    id = setTimeout(tick, SLIDESHOW_MS);
-    return () => clearTimeout(id);
-  }, [open, hasItems, setIndex, safeIndex]);
-
-  useEffect(() => {
-    if (!open || !hasItems) return;
-    const n = new Image();
-    n.src = items[(safeIndex + 1) % items.length]?.src || "";
-    const p = new Image();
-    p.src = items[(safeIndex - 1 + items.length) % items.length]?.src || "";
-  }, [open, hasItems, items, safeIndex]);
-
-  useEffect(() => {
-    if (!open) return;
-    viewRef.current = { mode: "fit", zoom: 1, offsetX: 0, offsetY: 0, rotation: 0 };
-    forceUi();
-    renderNow();
-  }, [open, safeIndex]);
-
-  const computeFitZoom = useCallback(() => {
-    const c = containerRef.current;
-    const { w, h } = naturalRef.current;
+  const computeFit = () => {
+    const c = wrapRef.current;
+    const { w, h } = natural.current;
     if (!c || !w || !h) return 1;
     return Math.min(c.clientWidth / w, c.clientHeight / h) || 1;
+  };
+
+  const clampPan = () => {
+    const c = wrapRef.current;
+    const { w, h } = natural.current;
+    if (!c || !w || !h) return;
+
+    const v = view.current;
+    const sw = w * v.zoom;
+    const sh = h * v.zoom;
+    const cw = c.clientWidth;
+    const ch = c.clientHeight;
+
+    const clampAxis = (img, cont, pos) => {
+      if (img <= cont) return (cont - img) / 2; // center & lock axis
+      return clamp(pos, cont - img, 0);
+    };
+
+    v.x = clampAxis(sw, cw, v.x);
+    v.y = clampAxis(sh, ch, v.y);
+  };
+
+  const renderImage = () => {
+    const el = imgRef.current;
+    if (!el) return;
+    const v = view.current;
+    el.style.transformOrigin = "0 0";
+    el.style.transform = `translate3d(${v.x}px, ${v.y}px, 0) scale(${v.zoom})`;
+  };
+
+  const zoomAround = (factor, pivot) => {
+    const v = view.current;
+    const minZ = v.base; // never below fit
+    const zNew = clamp(v.zoom * factor, minZ, ZMAX);
+    if (zNew === v.zoom) return;
+
+    const ratio = zNew / v.zoom;
+    v.x = v.x * ratio + pivot.x * (1 - ratio);
+    v.y = v.y * ratio + pivot.y * (1 - ratio);
+    v.zoom = zNew;
+
+    clampPan();
+    renderImage();
+  };
+
+  const rectPoint = (e) => {
+    const r = wrapRef.current.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top, t: e.timeStamp || Date.now() };
+  };
+
+  const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+  // ---------- lifecycle ----------
+  useEffect(() => {
+    setLoading(true);
+  }, [safeIndex]);
+
+  useEffect(() => {
+    const onResize = () => {
+      const base = computeFit();
+      const atBase = Math.abs(view.current.zoom - view.current.base) < 0.01;
+      view.current.base = base;
+      if (atBase) {
+        view.current.zoom = base;
+        view.current.x = 0;
+        view.current.y = 0;
+      }
+      clampPan();
+      renderImage();
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  const applyMode = (mode) => {
-    const v = viewRef.current;
-    v.mode = mode;
-    if (mode === "fit") {
-      v.zoom = computeFitZoom();
-      v.offsetX = 0;
-      v.offsetY = 0;
-    } else {
-      v.zoom = 1;
-    }
-    renderNow();
-    forceUi();
+  // ---------- image load ----------
+  const onImgLoad = () => {
+    const el = imgRef.current;
+    if (!el) return;
+    natural.current = { w: el.naturalWidth || 0, h: el.naturalHeight || 0 };
+    const base = computeFit();
+    view.current = { base, zoom: base, x: 0, y: 0 };
+    clampPan();
+    renderImage();
+    setLoading(false);
   };
 
-  const toggleFit = () => applyMode(viewRef.current.mode === "fit" ? "actual" : "fit");
-  const resetView = () => {
-    viewRef.current.rotation = 0;
-    applyMode("fit");
+  // ---------- input handlers ----------
+  const onWheel = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const p = rectPoint(e);
+    zoomAround(e.deltaY > 0 ? 1 / 1.1 : 1.1, p);
   };
-  const rotateBy = (deg) => {
-    const v = viewRef.current;
-    v.rotation = (Math.round((v.rotation + deg) / 90) * 90 + 360) % 360;
-    renderNow();
-    forceUi();
-  };
-
-  const zoomBy = (factor, aroundPoint) => {
-    const v = viewRef.current;
-    const zPrev = v.zoom;
-    const zNew = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zPrev * factor));
-    if (aroundPoint && containerRef.current) {
-      const ratio = zNew / zPrev;
-      v.offsetX = v.offsetX * ratio + aroundPoint.x * (1 - ratio);
-      v.offsetY = v.offsetY * ratio + aroundPoint.y * (1 - ratio);
-    }
-    v.zoom = zNew;
-    v.mode = "actual";
-    renderNow();
-    forceUi();
-  };
-
-  const pointFromEvent = (e) => {
-    const rect = containerRef.current.getBoundingClientRect();
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
-  };
-  const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
-  const midpoint = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
 
   const onPointerDown = (e) => {
-    if (!open) return;
-    const pt = pointFromEvent(e);
-    containerRef.current.setPointerCapture?.(e.pointerId);
-    pointersRef.current.set(e.pointerId, pt);
+    if (e.target.closest("button") || e.target.closest("a")) return;
+    e.preventDefault();
+    e.stopPropagation();
+    wrapRef.current.setPointerCapture(e.pointerId);
+    const p = rectPoint(e);
+    pointers.current.set(e.pointerId, p);
 
-    if (e.pointerType === "touch") {
-      const now = Date.now(),
-        last = lastTapRef.current;
-      const dt = now - last.t,
-        d = Math.hypot(pt.x - last.x, pt.y - last.y);
-      if (dt < 250 && d < 30) {
-        const base = viewRef.current.mode === "fit" ? computeFitZoom() : 1;
-        const target = viewRef.current.zoom < base * 1.8 ? 2.0 : base;
-        zoomBy(target / viewRef.current.zoom, pt);
-        lastTapRef.current = { t: 0, x: 0, y: 0 };
-        return;
-      }
-      lastTapRef.current = { t: now, x: pt.x, y: pt.y };
-    }
-
-    if (pointersRef.current.size === 1) {
-      const v = viewRef.current;
-      dragRef.current = { startX: pt.x, startY: pt.y, startOffsetX: v.offsetX, startOffsetY: v.offsetY };
-    } else if (pointersRef.current.size === 2) {
-      const [p1, p2] = Array.from(pointersRef.current.values());
-      pinchRef.current = { dist: distance(p1, p2), zoom: viewRef.current.zoom };
+    if (pointers.current.size === 1) {
+      dragStart.current = { x: p.x, y: p.y, vx: view.current.x, vy: view.current.y, t: p.t };
+    } else if (pointers.current.size === 2) {
+      const [a, b] = Array.from(pointers.current.values());
+      pinchStart.current = { dist: dist(a, b), zoom: view.current.zoom };
     }
   };
 
   const onPointerMove = (e) => {
-    if (!open) return;
-    if (!pointersRef.current.has(e.pointerId)) return;
-    const pt = pointFromEvent(e);
-    pointersRef.current.set(e.pointerId, pt);
+    if (!pointers.current.has(e.pointerId)) return;
+    if (!e.target.closest("button") && !e.target.closest("a")) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
 
-    if (pointersRef.current.size === 2 && pinchRef.current) {
-      const [p1, p2] = Array.from(pointersRef.current.values());
-      const distNow = distance(p1, p2);
-      const center = midpoint(p1, p2);
-      const f = distNow / Math.max(1, pinchRef.current.dist);
-      const target = Math.max(0.1, Math.min(8, pinchRef.current.zoom * f));
-      const ratio = target / viewRef.current.zoom;
-      viewRef.current.offsetX = viewRef.current.offsetX * ratio + center.x * (1 - ratio);
-      viewRef.current.offsetY = viewRef.current.offsetY * ratio + center.y * (1 - ratio);
-      viewRef.current.zoom = target;
-      viewRef.current.mode = "actual";
-      renderNow();
+    const p = rectPoint(e);
+    pointers.current.set(e.pointerId, p);
+
+    // pinch
+    if (pointers.current.size === 2 && pinchStart.current) {
+      const [a, b] = Array.from(pointers.current.values());
+      const dNow = dist(a, b);
+      const center = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      const target = (dNow / Math.max(1, pinchStart.current.dist)) * pinchStart.current.zoom;
+      const factor = target / view.current.zoom;
+      zoomAround(factor, center);
       return;
     }
 
-    if (pointersRef.current.size === 1 && dragRef.current) {
-      const v = viewRef.current;
-      const base = v.mode === "fit" ? computeFitZoom() : 1;
-      const allowPan = v.zoom > base * 1.01;
-      const dx = pt.x - dragRef.current.startX;
-      const dy = pt.y - dragRef.current.startY;
-      if (allowPan) {
-        v.offsetX = dragRef.current.startOffsetX + dx;
-        v.offsetY = dragRef.current.startOffsetY + dy;
-        renderNow();
+    // pan
+    if (pointers.current.size === 1 && dragStart.current) {
+      const base = view.current.base;
+      const atBase = Math.abs(view.current.zoom - base) < 0.01;
+      const dx = p.x - dragStart.current.x;
+      const dy = p.y - dragStart.current.y;
+
+      if (!atBase) {
+        view.current.x = dragStart.current.vx + dx;
+        view.current.y = dragStart.current.vy + dy;
+        clampPan();
+        renderImage();
       }
     }
   };
 
-  const onPointerUpOrCancel = (e) => {
-    if (!open) return;
-    const pt = pointersRef.current.get(e.pointerId);
-    pointersRef.current.delete(e.pointerId);
-    containerRef.current.releasePointerCapture?.(e.pointerId);
-    if (pointersRef.current.size < 2) pinchRef.current = null;
+  const onPointerUp = (e) => {
+    if (!pointers.current.has(e.pointerId)) return;
+    if (!e.target.closest("button") && !e.target.closest("a")) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
 
-    if (dragRef.current && pt) {
-      const v = viewRef.current;
-      const base = v.mode === "fit" ? computeFitZoom() : 1;
-      const notZoomed = v.zoom <= base * 1.01;
-      const dx = pt.x - dragRef.current.startX;
-      const dy = pt.y - dragRef.current.startY;
-      const absX = Math.abs(dx),
-        absY = Math.abs(dy);
-      if (notZoomed && absX > 60 && absX > absY) {
-        setIndex(safeIndex + (dx < 0 ? 1 : -1));
-      } else if (notZoomed && dy > 80 && absY > absX) {
-        onClose?.();
+    const p = pointers.current.get(e.pointerId);
+    pointers.current.delete(e.pointerId);
+    wrapRef.current.releasePointerCapture(e.pointerId);
+    if (pointers.current.size < 2) pinchStart.current = null;
+
+    // swipe (only at base zoom)
+    if (dragStart.current && p) {
+      const base = view.current.base;
+      const atBase = Math.abs(view.current.zoom - base) < 0.01;
+      const dx = p.x - dragStart.current.x;
+      if (atBase && Math.abs(dx) > SWIPE_PX) {
+        setIndex(dx < 0 ? safeIndex + 1 : safeIndex - 1);
       }
     }
-    dragRef.current = null;
-    forceUi();
+
+    dragStart.current = null;
   };
 
-  const onWheel = (e) => {
-    e.preventDefault();
-    const rect = containerRef.current.getBoundingClientRect();
-    const pt = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-    zoomBy(e.deltaY > 0 ? 1 / 1.1 : 1.1, pt);
-  };
-
-  const onImgLoad = () => {
-    const el = imgRef.current;
-    if (!el) return;
-    naturalRef.current = { w: el.naturalWidth || 0, h: el.naturalHeight || 0 };
-    viewRef.current.zoom = computeFitZoom();
-    viewRef.current.mode = "fit";
-    viewRef.current.offsetX = 0;
-    viewRef.current.offsetY = 0;
-    renderNow();
-    forceUi();
-  };
-
-  const renderNow = () => {
-    const img = imgRef.current;
-    const v = viewRef.current;
-    if (!img) return;
-    img.style.transform = `translate3d(${v.offsetX}px, ${v.offsetY}px, 0) scale(${v.zoom}) rotate(${v.rotation}deg)`;
-  };
-
+  // ---------- early return AFTER all hooks to keep hook order stable ----------
   if (!open || !item) return null;
 
-  const btn = "border border-white/25 bg-white/15 text-white px-3 py-2 rounded-lg text-sm backdrop-blur hover:bg-white/20";
+  // ---------- UI ----------
+  const btn = "px-3 py-1.5 rounded-md border border-white/30 bg-white/10 text-white text-sm hover:bg-white/20";
 
   return (
     <div
-      ref={containerRef}
-      className="fixed inset-0 bg-black/90 flex items-center justify-center z-[9999] select-none touch-none"
-      style={{
-        cursor: dragRef.current ? "grabbing" : viewRef.current.zoom > (viewRef.current.mode === "fit" ? computeFitZoom() : 1) * 1.01 ? "grab" : "zoom-out",
-      }}
-      onClick={onClose}
+      ref={wrapRef}
+      className="fixed inset-0 z-[9999] bg-black text-white select-none"
+      style={{ touchAction: "none" }}
       onWheel={onWheel}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
-      onPointerUp={onPointerUpOrCancel}
-      onPointerCancel={onPointerUpOrCancel}
-      aria-modal="true"
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
       role="dialog"
-      aria-label={item ? `Viewing ${item.name}` : "Viewer"}
+      aria-modal="true"
+      aria-label={item?.name ? `Viewing ${item.name}` : "Image viewer"}
     >
-      {/* Info */}
-      <div className="fixed top-3 left-3 text-neutral-200 text-xs bg-black/35 px-2 py-1.5 rounded-md pointer-events-none">
-        <div className="font-semibold">{item?.name || ""}</div>
-        <div>
-          {ui.mode === "fit" ? "Fit" : "Actual"} • Zoom {(ui.zoom * 100).toFixed(0)}% • Rot {ui.rotation}°
-          {hasItems ? ` • ${safeIndex + 1}/${items.length}` : ""}
+      {/* Top bar */}
+      <div className="absolute top-0 left-0 right-0 p-3 bg-gradient-to-b from-black/60 to-transparent flex items-center justify-between">
+        <div className="text-sm opacity-90">
+          {item?.name || "Image"} {valid ? `• ${safeIndex + 1} / ${total}` : ""}
         </div>
-        <div>Gestures: pinch, double-tap, swipe ←/→/↓</div>
+        <div className="flex items-center gap-2">
+          <button className={btn} onClick={() => setIndex(safeIndex - 1)} aria-label="Previous">
+            Prev
+          </button>
+          <button className={btn} onClick={() => setIndex(safeIndex + 1)} aria-label="Next">
+            Next
+          </button>
+          <button className={btn} onClick={() => onClose?.()} aria-label="Close">
+            Close
+          </button>
+        </div>
       </div>
 
-      {/* Top-right actions */}
-      <div className="fixed top-3 right-3 flex gap-2" onClick={(e) => e.stopPropagation()}>
-        <a href={item.src} target="_blank" rel="noreferrer" className={btn}>
-          Open
-        </a>
-        <a href={item.download} className={btn}>
-          Download
-        </a>
+      {/* Stage */}
+      <div className="absolute inset-0 flex items-center justify-center">
+        {loading && <div className="absolute inset-0 grid place-items-center text-white/70 text-sm">Loading…</div>}
+        <img
+          ref={imgRef}
+          src={item.src}
+          alt={item?.name || ""}
+          onLoad={onImgLoad}
+          className="max-w-none max-h-none origin-top-left pointer-events-none select-none"
+          draggable={false}
+          style={{ opacity: loading ? 0 : 1, transition: "opacity 180ms ease" }}
+        />
+      </div>
+
+      {/* Bottom bar */}
+      <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/60 to-transparent flex items-center justify-center gap-2">
         <button
           className={btn}
           onClick={() => {
-            const url = new URL(item.src, location.origin).toString();
-            if (navigator.share) navigator.share({ title: item.name, url }).catch(() => {});
-            else
-              navigator.clipboard
-                ?.writeText(url)
-                .then(() => alert("Link copied!"))
-                .catch(() => {});
+            const r = wrapRef.current;
+            const pivot = r ? { x: r.clientWidth / 2, y: r.clientHeight / 2 } : { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+            const base = view.current.base;
+            const atBase = Math.abs(view.current.zoom - base) < 0.01;
+            const target = atBase ? base * 2 : base;
+            zoomAround(target / view.current.zoom, pivot);
           }}
         >
-          Share
-        </button>
-        <button
-          className={btn}
-          onClick={(e) => {
-            e.stopPropagation();
-            onClose?.();
-          }}
-          aria-label="Close"
-        >
-          × Close
-        </button>
-      </div>
-
-      {/* Bottom controls */}
-      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 flex flex-wrap justify-center gap-2" onClick={(e) => e.stopPropagation()}>
-        <button className={btn} onClick={() => setIndex(safeIndex - 1)}>
-          ← Prev
-        </button>
-        <button className={btn} onClick={() => zoomBy(1 / 1.2, { x: window.innerWidth / 2, y: window.innerHeight / 2 })}>
-          – Zoom
-        </button>
-        <button className={btn} onClick={() => applyMode("actual")}>
-          1:1
-        </button>
-        <button className={btn} onClick={() => applyMode("fit")}>
-          Fit
-        </button>
-        <button className={btn} onClick={() => zoomBy(1.2, { x: window.innerWidth / 2, y: window.innerHeight / 2 })}>
-          + Zoom
-        </button>
-        <button className={btn} onClick={() => rotateBy(90)}>
-          ⟳ Rotate
+          {Math.abs(view.current.zoom - view.current.base) < 0.01 ? "Zoom In" : "Fit"}
         </button>
         <button
           className={btn}
           onClick={() => {
-            playingRef.current = !playingRef.current;
-            forceUi();
+            view.current.zoom = view.current.base;
+            view.current.x = 0;
+            view.current.y = 0;
+            clampPan();
+            renderImage();
           }}
         >
-          {ui.playing ? "Pause" : "Play"}
-        </button>
-        <button className={btn} onClick={() => setIndex(safeIndex + 1)}>
-          Next →
+          Reset
         </button>
       </div>
-
-      <img
-        ref={imgRef}
-        src={item.src}
-        alt={item.name || ""}
-        onLoad={onImgLoad}
-        className="max-w-none max-h-none pointer-events-none select-none"
-        style={{
-          transform: `translate3d(${viewRef.current.offsetX}px, ${viewRef.current.offsetY}px, 0) scale(${viewRef.current.zoom}) rotate(${viewRef.current.rotation}deg)`,
-        }}
-        draggable={false}
-        onClick={(e) => e.stopPropagation()}
-      />
     </div>
   );
 }

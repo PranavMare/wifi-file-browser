@@ -13,7 +13,6 @@ import mime from "mime-types";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// ===== Env-configurable values (moved out of source) =====
 const PASSWORD = String(process.env.AUTH_PASS || ""); // REQUIRED
 const COOKIE_SECRET = String(process.env.COOKIE_SECRET || ""); // REQUIRED
 const COOKIE_NAME = process.env.COOKIE_NAME || "wf_auth";
