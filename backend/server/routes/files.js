@@ -6,10 +6,61 @@ import path from "path";
 import mime from "mime-types";
 import { safeResolve } from "../utils/paths.js";
 
+function contentTypeFor(absPath) {
+  const ext = path.extname(absPath).slice(1).toLowerCase();
+  // Prefer our explicit map, then fall back to mime-types, then octet-stream
+  return (
+    {
+      // video
+      mp4: "video/mp4",
+      m4v: "video/mp4",
+      mov: "video/quicktime",
+      webm: "video/webm",
+      mkv: "video/x-matroska",
+      avi: "video/x-msvideo",
+      mpg: "video/mpeg",
+      mpeg: "video/mpeg",
+      // audio
+      mp3: "audio/mpeg",
+      m4a: "audio/mp4",
+      wav: "audio/wav",
+      flac: "audio/flac",
+      ogg: "audio/ogg",
+      oga: "audio/ogg",
+      // images (incl. HEIC/HEIF)
+      heic: "image/heic",
+      heif: "image/heif",
+      jpg: "image/jpeg",
+      jpeg: "image/jpeg",
+      png: "image/png",
+      webp: "image/webp",
+      gif: "image/gif",
+      bmp: "image/bmp",
+      svg: "image/svg+xml",
+      // docs
+      pdf: "application/pdf",
+      txt: "text/plain; charset=utf-8",
+      md: "text/markdown; charset=utf-8",
+      csv: "text/csv; charset=utf-8",
+      json: "application/json",
+    }[ext] ||
+    mime.lookup(absPath) ||
+    "application/octet-stream"
+  );
+}
+
+// RFC 5987 filename* support + ASCII fallback to avoid weird characters
+function contentDispositionValue(filename) {
+  const base = path.basename(filename);
+  const asciiFallback = base.replace(/[^\x20-\x7E]+/g, "_").replace(/["\\]/g, "_");
+  const encoded = encodeURIComponent(base).replace(/['()*]/g, (c) => "%" + c.charCodeAt(0).toString(16));
+  return `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encoded}`;
+}
+
 export default function filesRoutes({ BASE_DIR }) {
   const r = Router();
 
-  // Range-aware file reader
+  // -------- Range-aware file reader --------
   r.get(/^\/file\/(.+)$/, async (req, res) => {
     try {
       const rel = decodeURIComponent(req.params[0] || "");
@@ -17,27 +68,7 @@ export default function filesRoutes({ BASE_DIR }) {
       const st = await fsp.stat(abs);
       if (!st.isFile()) return res.sendStatus(404);
 
-      const ext = path.extname(abs).slice(1).toLowerCase();
-      const typeFromExt =
-        {
-          mp4: "video/mp4",
-          m4v: "video/mp4",
-          mov: "video/quicktime",
-          webm: "video/webm",
-          mkv: "video/x-matroska",
-          avi: "video/x-msvideo",
-          mpg: "video/mpeg",
-          mpeg: "video/mpeg",
-          mp3: "audio/mpeg",
-          m4a: "audio/mp4",
-          wav: "audio/wav",
-          flac: "audio/flac",
-          ogg: "audio/ogg",
-          oga: "audio/ogg",
-        }[ext] ||
-        mime.lookup(abs) ||
-        "application/octet-stream";
-
+      const type = contentTypeFor(abs);
       res.setHeader("Accept-Ranges", "bytes");
 
       const range = req.headers.range;
@@ -56,14 +87,14 @@ export default function filesRoutes({ BASE_DIR }) {
         res.writeHead(206, {
           "Content-Range": `bytes ${start}-${end}/${st.size}`,
           "Content-Length": end - start + 1,
-          "Content-Type": typeFromExt,
+          "Content-Type": type,
           "Cache-Control": "no-store",
         });
         fs.createReadStream(abs, { start, end, highWaterMark: 1 << 20 }).pipe(res);
       } else {
         res.writeHead(200, {
           "Content-Length": st.size,
-          "Content-Type": typeFromExt,
+          "Content-Type": type,
           "Cache-Control": "no-store",
         });
         fs.createReadStream(abs, { highWaterMark: 1 << 20 }).pipe(res);
@@ -74,7 +105,7 @@ export default function filesRoutes({ BASE_DIR }) {
     }
   });
 
-  // HEAD /file/*
+  // -------- HEAD /file/* --------
   r.head(/^\/file\/(.+)$/, async (req, res) => {
     try {
       const rel = decodeURIComponent(req.params[0] || "");
@@ -89,12 +120,16 @@ export default function filesRoutes({ BASE_DIR }) {
     }
   });
 
-  // Range-friendly download
+  // -------- Range-friendly download --------
   r.get(/^\/download\/(.+)$/, async (req, res) => {
     try {
       const rel = decodeURIComponent(req.params[0] || "");
       const abs = safeResolve(BASE_DIR, rel);
       const st = await fsp.stat(abs);
+      if (!st.isFile()) return res.sendStatus(404);
+
+      const type = contentTypeFor(abs);
+      const dispo = contentDispositionValue(abs);
 
       res.setHeader("Accept-Ranges", "bytes");
 
@@ -109,14 +144,14 @@ export default function filesRoutes({ BASE_DIR }) {
         res.status(206);
         res.setHeader("Content-Range", `bytes ${start}-${end}/${st.size}`);
         res.setHeader("Content-Length", end - start + 1);
-        res.setHeader("Content-Type", "application/octet-stream");
-        res.setHeader("Content-Disposition", `attachment; filename="${path.basename(abs)}"`);
+        res.setHeader("Content-Type", type); // <- real MIME prevents .bin
+        res.setHeader("Content-Disposition", dispo);
         fs.createReadStream(abs, { start, end, highWaterMark: 1 << 20 }).pipe(res);
       } else {
         res.status(200);
         res.setHeader("Content-Length", st.size);
-        res.setHeader("Content-Type", "application/octet-stream");
-        res.setHeader("Content-Disposition", `attachment; filename="${path.basename(abs)}"`);
+        res.setHeader("Content-Type", type); // <- real MIME prevents .bin
+        res.setHeader("Content-Disposition", dispo);
         fs.createReadStream(abs, { highWaterMark: 1 << 20 }).pipe(res);
       }
     } catch (e) {

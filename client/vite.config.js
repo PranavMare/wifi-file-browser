@@ -5,12 +5,8 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
-    proxy: {
-      "^/(api|file|download|thumb|auth)": {
-        target: "http://localhost:3000",
-        changeOrigin: true,
-      },
-    },
+
+    proxy: { "^/(api|file|download|thumb|vthumb|video|login|logout)": { target: "http://localhost:3000", changeOrigin: true } },
   },
   preview: {
     port: 5174,

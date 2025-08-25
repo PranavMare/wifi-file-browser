@@ -295,31 +295,97 @@ app.get(/^\/download\/(.+)$/, async (req, res) => {
 });
 
 // Smart thumbnail endpoint
+// --- helpers (place near top of file, once) ---
+async function writePlaceholder({ outPath, w, h, fmt, q }) {
+  // Generate a small placeholder image we can always serve.
+  // Prefer sharp if available so we can match the requested format; else write a tiny PNG.
+  try {
+    if (sharp) {
+      const width = Math.max(1, w || 240);
+      const height = Math.max(1, h || w || 240);
+      let pipe = sharp({
+        create: {
+          width,
+          height,
+          channels: 3,
+          background: { r: 240, g: 242, b: 245 }, // light gray
+        },
+      })
+        .composite([
+          // subtle diagonal stripe
+          {
+            input: Buffer.from(
+              `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
+                 <defs><pattern id="p" width="16" height="16" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+                   <rect width="16" height="16" fill="rgba(0,0,0,0)" />
+                   <rect x="0" y="7" width="16" height="2" fill="rgba(0,0,0,0.06)" />
+                 </pattern></defs>
+                 <rect width="100%" height="100%" fill="url(#p)"/>
+               </svg>`
+            ),
+            top: 0,
+            left: 0,
+            gravity: "centre",
+            blend: "over",
+          },
+        ])
+        .jpeg({ quality: q });
+
+      if (fmt === "webp") pipe = pipe.webp({ quality: q });
+      else if (fmt === "avif") pipe = pipe.avif({ quality: q, effort: 4 });
+
+      await pipe.toFile(outPath);
+      return outPath;
+    } else {
+      // no sharp: write a 1x1 transparent PNG
+      const tinyPng = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAoMBgXr8bWkAAAAASUVORK5CYII=", "base64");
+      await fsp.writeFile(outPath, tinyPng);
+      return outPath;
+    }
+  } catch {
+    // last resort: write nothing and let caller handle
+    return null;
+  }
+}
+
+// --- DROP-IN: replace your existing /thumb route with this one ---
 app.get(/^\/thumb\/(.+)$/, async (req, res) => {
   try {
     const rel = decodeURIComponent(req.params[0] || "");
     const abs = safeResolve(rel);
     if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) return res.sendStatus(404);
 
-    if (!sharp) return res.sendFile(abs);
-
     const w = Math.max(1, Math.min(4096, parseInt(req.query.w ?? "360", 10)));
     const h = req.query.h ? Math.max(1, Math.min(4096, parseInt(req.query.h, 10))) : null;
     const fit = (req.query.fit || "contain").toString();
-    const fm = (req.query.fm || "webp").toString().toLowerCase(); // webp | jpeg | avif
+    const requestedFm = (req.query.fm || "webp").toString().toLowerCase(); // webp | jpeg | avif
     const q = Math.max(1, Math.min(100, parseInt(req.query.q ?? "82", 10)));
 
     const st = fs.statSync(abs);
+    let finalFm = requestedFm;
+    if (!sharp && (finalFm === "webp" || finalFm === "avif")) finalFm = "jpeg"; // we can always write jpeg
+    const ext = finalFm === "jpeg" ? "jpg" : finalFm;
+
     const key = crypto
       .createHash("md5")
-      .update([abs, st.mtimeMs, w, h ?? "", fit, fm, q].join("|"))
+      .update([abs, st.mtimeMs, w, h ?? "", fit, finalFm, q].join("|"))
       .digest("hex");
-    const ext = fm === "jpeg" ? "jpg" : fm;
     const outPath = path.join(CACHE_DIR, `${key}.${ext}`);
     await fsp.mkdir(CACHE_DIR, { recursive: true });
 
-    if (!fs.existsSync(outPath)) {
-      try {
+    // If already cached (even as placeholder), serve it.
+    if (fs.existsSync(outPath)) {
+      res.setHeader("X-Thumb-Handler", "cache");
+      res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      res.setHeader("ETag", `"${key}"`);
+      return res.type(ext).send(fs.readFileSync(outPath));
+    }
+
+    // Try with sharp first for all non-HEIC (sharp can't decode most HEIC builds).
+    const isHeic = /\.(heic|heif|heics|heifs)$/i.test(abs);
+
+    try {
+      if (sharp && !isHeic) {
         let pipe = sharp(abs, { failOnError: false })
           .rotate()
           .resize({
@@ -330,27 +396,84 @@ app.get(/^\/thumb\/(.+)$/, async (req, res) => {
             withoutEnlargement: true,
             kernel: sharp.kernel.lanczos3,
             fastShrinkOnLoad: true,
-            background: { r: 0, g: 0, b: 0, alpha: 0 }, // transparent when format supports it
+            background: { r: 0, g: 0, b: 0, alpha: 0 },
           });
 
-        if (fm === "jpeg" && h) {
-          // JPEG has no alpha — flatten onto white so pads aren't black
-          pipe = pipe.flatten({ background: "#ffffff" });
-        } else if (fm === "avif") pipe = pipe.avif({ quality: q, effort: 4 });
-        else pipe = pipe.jpeg({ quality: q, progressive: true, mozjpeg: true });
+        if (finalFm === "avif") pipe = pipe.avif({ quality: q, effort: 4 });
+        else if (finalFm === "webp") pipe = pipe.webp({ quality: q });
+        else {
+          if (h) pipe = pipe.flatten({ background: "#ffffff" }); // avoid black bars for jpeg
+          pipe = pipe.jpeg({ quality: q, progressive: true, mozjpeg: true });
+        }
 
         await pipe.toFile(outPath);
-      } catch (err) {
-        console.warn("thumb gen failed, fallback to original:", err?.message || err);
-        return res.sendFile(abs);
+        res.setHeader("X-Thumb-Handler", "sharp");
+      } else {
+        // HEIC or no sharp → use ffmpeg to decode to jpeg, then (optionally) transcode
+        const ffmpeg = (await import("ffmpeg-static")).default || "ffmpeg";
+        const { spawn } = await import("child_process");
+        const tmpJpg = path.join(CACHE_DIR, `${key}.tmp.jpg`);
+
+        let vf = "";
+        if (w && h) {
+          vf =
+            fit === "cover"
+              ? `scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h}`
+              : `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:white`;
+        } else if (w) {
+          vf = `scale=${w}:-1:force_original_aspect_ratio=decrease`;
+        }
+        const mjpegQ = Math.max(2, Math.min(31, Math.round(31 - (q / 100) * 29)));
+        const args = ["-hide_banner", "-loglevel", "error", "-y", "-i", abs, "-frames:v", "1", "-q:v", String(mjpegQ), tmpJpg];
+        if (vf) args.splice(args.length - 3, 0, "-vf", vf);
+
+        await new Promise((resolve, reject) => {
+          const p = spawn(ffmpeg, args);
+          let err = "";
+          p.stderr.on("data", (d) => (err += d.toString()));
+          p.on("close", (code) => (code === 0 ? resolve() : reject(new Error(err || `ffmpeg exit ${code}`))));
+        });
+
+        if (finalFm === "jpeg" || !sharp) {
+          await fsp.rename(tmpJpg, outPath).catch(async () => {
+            const b = await fsp.readFile(tmpJpg);
+            await fsp.writeFile(outPath, b);
+            await fsp.unlink(tmpJpg).catch(() => {});
+          });
+        } else {
+          // transcode jpeg → requestedFm
+          let pipe = sharp(tmpJpg, { failOnError: false });
+          if (finalFm === "avif") pipe = pipe.avif({ quality: q, effort: 4 });
+          else pipe = pipe.webp({ quality: q });
+          await pipe.toFile(outPath);
+          try {
+            await fsp.unlink(tmpJpg);
+          } catch {}
+        }
+        res.setHeader("X-Thumb-Handler", "ffmpeg");
       }
+    } catch (err) {
+      // 🔴 IMPORTANT: Do NOT send original HEIC. Serve a placeholder instead and cache it.
+      console.warn("thumb gen failed; serving placeholder:", err?.message || err);
+      // if requested webp/avif but no sharp, force jpeg placeholder
+      const phFmt = sharp ? finalFm : "jpeg";
+      const phExt = phFmt === "jpeg" ? "jpg" : phFmt;
+      const phOut = phExt === ext ? outPath : path.join(CACHE_DIR, `${key}.${phExt}`);
+
+      const wrote = await writePlaceholder({ outPath: phOut, w, h, fmt: phFmt, q });
+      if (!wrote) return res.sendStatus(415);
+
+      res.setHeader("X-Thumb-Handler", "placeholder");
+      res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      res.setHeader("ETag", `"${key}"`);
+      return res.type(phExt).send(fs.readFileSync(phOut));
     }
 
+    // success path
     res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
     res.setHeader("ETag", `"${key}"`);
-    res.type(ext).send(fs.readFileSync(outPath));
+    return res.type(ext).send(fs.readFileSync(outPath));
   } catch (e) {
-    if (e && e.code === "ENOENT") return res.sendStatus(404);
     console.error("thumb error:", e);
     res.sendStatus(e?.message === "Forbidden" ? 403 : 500);
   }
